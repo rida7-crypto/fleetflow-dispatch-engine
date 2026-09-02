@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FleetFlow · Koramangala Dispatch</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --asphalt: #14171a;
+    --asphalt-raised: #1d2125;
+    --line: #2b3136;
+    --auto-yellow: #f2b705;
+    --auto-yellow-dim: #a67e0a;
+    --text-hi: #eef1f3;
+    --text-lo: #8d9aa3;
+    --go: #4fd68c;
+    --wait: #ff8a5c;
+    --lock: #ff5c6c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    background: var(--asphalt);
+    color: var(--text-hi);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  /* ---------- MAP ---------- */
+  #map-wrap {
+    position: relative;
+    flex: 1 1 68%;
+    height: 100%;
+  }
+  #map { width: 100%; height: 100%; filter: saturate(0.9) brightness(0.95); }
+
+  #map-title {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    z-index: 500;
+    background: rgba(20, 23, 26, 0.88);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 16px;
+    pointer-events: none;
+  }
+  #map-title h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  #map-title p {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--text-lo);
+  }
+
+  .leaflet-popup-content-wrapper { background: var(--asphalt-raised); color: var(--text-hi); border-radius: 8px; }
+  .leaflet-popup-tip { background: var(--asphalt-raised); }
+
+  /* ---------- SIDE PANEL ---------- */
+  #panel {
+    flex: 0 0 380px;
+    height: 100%;
+    background: var(--asphalt-raised);
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    padding: 22px 20px;
+    overflow-y: auto;
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--auto-yellow); color: #1b1b1b;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px;
+  }
+  .brand h2 { margin: 0; font-size: 16px; }
+  .brand span { display: block; font-size: 11.5px; color: var(--text-lo); margin-top: 1px; }
+
+  .step {
+    background: var(--asphalt);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .step h3 { margin: 0 0 4px; font-size: 13.5px; }
+  .step p { margin: 0 0 10px; font-size: 12.5px; color: var(--text-lo); line-height: 1.5; }
+
+  button {
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--auto-yellow);
+    color: #1b1b1b;
+    font-weight: 700;
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  button:hover { background: #ffcb2e; }
+  button:disabled { background: var(--line); color: var(--text-lo); cursor: not-allowed; }
+
+  /* metric cards */
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 14px; }
+  .metric {
+    background: var(--asphalt);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .metric .label { font-size: 11px; color: var(--text-lo); margin-bottom: 6px; }
+  .metric .value { font-size: 15px; font-weight: 700; }
+  .metric .value.good { color: var(--go); }
+  .metric .value.warn { color: var(--wait); }
+
+  /* state timeline */
+  .timeline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .badge {
+    font-size: 11px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--text-lo);
+  }
+  .badge.active { border-color: var(--auto-yellow); color: var(--auto-yellow); }
+  .badge.done { border-color: var(--go); color: var(--go); }
+  .arrow { color: var(--text-lo); font-size: 11px; }
+
+  /* terminal log */
+  #log-wrap {
+    flex: 1;
+    min-height: 160px;
+    background: #0e1012;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  #log-wrap .log-title { font-size: 11px; color: var(--text-lo); margin-bottom: 6px; }
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: #9fe7b8;
+  }
+  #log div.miss { color: var(--wait); }
+  #log div.lock { color: var(--lock); }
+  #log div.sys { color: var(--text-lo); }
+</style>
+</head>
+<body>
+
+  <div id="map-wrap">
+    <div id="map-title">
+      <h1>FleetFlow Dispatch</h1>
+      <p>Koramangala, Bengaluru — live driver grid</p>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <div id="panel">
+    <div class="brand">
+      <div class="brand-mark">FF</div>
+      <div>
+        <h2>FleetFlow Engine</h2>
+        <span>Redis geo-index + FP state machine</span>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>1. Seed the fleet</h3>
+      <p>Loads 5 auto locations straight into Redis via GEOADD.</p>
+      <button id="seed-btn" onclick="seedDrivers()">Seed 5 drivers</button>
+    </div>
+
+    <div class="step">
+      <h3>2. Request a ride</h3>
+      <p>Click anywhere on the map to drop a rider pin and dispatch.</p>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">Route cache</div>
+        <div class="value" id="m-cache">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" id="m-latency">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Matched driver</div>
+        <div class="value" id="m-driver">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Est. fare</div>
+        <div class="value" id="m-fare">—</div>
+      </div>
+    </div>
+
+    <div class="timeline" id="timeline">
+      <span class="badge" id="b-req">REQUESTED</span>
+      <span class="arrow">→</span>
+      <span class="badge" id="b-asg">ASSIGNED</span>
+      <span class="arrow">→</span>
+      <span class="badge" id="b-com">COMPLETED</span>
+    </div>
+
+    <div id="log-wrap">
+      <div class="log-title">event log</div>
+      <div id="log"><div class="sys">waiting for the fleet to be seeded…</div></div>
+    </div>
+  </div>
+
+<script>
+  const API = "http://localhost:8000";
+
+  const map = L.map('map').setView([12.9352, 77.6245], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const driverIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#f2b705;width:14px;height:14px;border-radius:4px;border:2px solid #1b1b1b;box-shadow:0 0 0 2px rgba(242,183,5,0.35)"></div>',
+    iconSize: [14, 14]
+  });
+
+  const drivers = [
+    { id: "Auto_101", lat: 12.9340, lon: 77.6220 },
+    { id: "Auto_102", lat: 12.9380, lon: 77.6290 },
+    { id: "Auto_103", lat: 12.9290, lon: 77.6180 },
+    { id: "Auto_104", lat: 12.9410, lon: 77.6210 },
+    { id: "Auto_105", lat: 12.9315, lon: 77.6320 },
+  ];
+
+  let routeLine = null;
+
+  function log(msg, cls) {
+    const el = document.getElementById('log');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    const t = new Date().toLocaleTimeString('en-IN', { hour12: false });
+    line.textContent = `[${t}] ${msg}`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function setTimeline(stage) {
+    ['b-req', 'b-asg', 'b-com'].forEach(id => document.getElementById(id).className = 'badge');
+    if (stage >= 1) document.getElementById('b-req').className = 'badge done';
+    if (stage === 2) document.getElementById('b-asg').className = 'badge active';
+    if (stage >= 2) document.getElementById('b-asg').className = 'badge done';
+    if (stage >= 3) document.getElementById('b-com').className = 'badge done';
+  }
+
+  async function seedDrivers() {
+    document.getElementById('seed-btn').disabled = true;
+    log('seeding 5 drivers into Redis (GEOADD)…', 'sys');
+    for (const d of drivers) {
+      L.marker([d.lat, d.lon], { icon: driverIcon }).addTo(map).bindPopup(`Driver ${d.id}`);
+      try {
+        await fetch(`${API}/drivers/location`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driver_id: d.id, lat: d.lat, lon: d.lon })
+        });
+        log(`${d.id} indexed at ${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}`);
+      } catch (e) {
+        log(`could not reach FleetFlow API — is uvicorn running?`, 'lock');
+        break;
+      }
+    }
+  }
+
+  map.on('click', async (e) => {
+    const pickup = e.latlng;
+    L.circleMarker(pickup, { radius: 8, color: '#ff5c6c', fillColor: '#ff5c6c', fillOpacity: 0.9 })
+      .addTo(map).bindPopup("Rider pickup").openPopup();
+
+    setTimeline(1);
+    log(`ride requested at ${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}`);
+
+    const started = performance.now();
+    let res, data;
+    try {
+      res = await fetch(`${API}/rides/estimate-and-dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ride_id: "ride_" + Date.now(),
+          rider_id: "rider_42",
+          pickup_lat: pickup.lat,
+          pickup_lon: pickup.lng,
+          drop_lat: pickup.lat + 0.02,
+          drop_lon: pickup.lng + 0.02
+        })
+      });
+      data = await res.json();
+    } catch (err) {
+      log('dispatch call failed — check the FastAPI server + Redis container', 'lock');
+      return;
+    }
+
+    const elapsed = Math.round(performance.now() - started);
+
+    if (!res.ok) {
+      log(`dispatch rejected: ${data.detail}`, 'lock');
+      return;
+    }
+
+    setTimeline(2);
+    document.getElementById('m-cache').textContent = data.cache_hit ? 'HIT' : 'MISS';
+    document.getElementById('m-cache').className = 'value ' + (data.cache_hit ? 'good' : 'warn');
+    document.getElementById('m-latency').textContent = `${elapsed} ms`;
+    document.getElementById('m-driver').textContent = data.assigned_driver;
+    document.getElementById('m-fare').textContent = `₹${data.estimated_fare}`;
+
+    log(`route ${data.cache_hit ? 'cache hit' : 'computed + cached'} — ${data.trip_distance_km} km`,
+        data.cache_hit ? '' : 'miss');
+    log(`locked ${data.assigned_driver} (${data.driver_distance_km} km away)`);
+
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline([pickup, [pickup.lat + 0.02, pickup.lng + 0.02]], {
+      color: '#f2b705', weight: 3, dashArray: '6 6'
+    }).addTo(map);
+
+    setTimeout(() => setTimeline(3), 900);
+  });
+</script>
+</body>
+</html>
